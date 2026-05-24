@@ -1,18 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-
-const model = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash"
-});
 
 app.get("/", (req, res) => {
   res.json({
@@ -24,39 +16,48 @@ app.post("/chat", async (req, res) => {
 
   try {
 
-    console.log(req.body);
-
     const msg = req.body.message;
 
-    if (!msg) {
-      return res.json({
-        error: "No message"
-      });
-    }
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
 
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [
+        headers: {
+          "Authorization":
+            "Bearer " + process.env.API_KEY,
+
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+
+          model:
+            "mistralai/mistral-7b-instruct",
+
+          messages: [
             {
-              text: msg
+              role: "user",
+              content: msg
             }
           ]
-        }
-      ]
-    });
+
+        })
+
+      }
+    );
+
+    const data = await response.json();
 
     const text =
-      result.response.candidates[0]
-      .content.parts[0]
-      .text;
+      data.choices[0].message.content;
 
     res.json({
       response: text
     });
 
-  } catch (err) {
+  } catch(err){
 
     console.log(err);
 
