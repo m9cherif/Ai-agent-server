@@ -24,11 +24,13 @@ app.post("/chat", async (req, res) => {
 
   try {
 
+    console.log(req.body);
+
     const msg = req.body.message;
 
-    if(!msg){
+    if (!msg) {
       return res.json({
-        error:"No message"
+        error: "No message"
       });
     }
 
@@ -54,7 +56,7 @@ app.post("/chat", async (req, res) => {
       response: text
     });
 
-  } catch(err){
+  } catch (err) {
 
     console.log(err);
 
