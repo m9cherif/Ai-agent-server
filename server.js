@@ -7,7 +7,6 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const app = express();
 
 app.use(cors());
-
 app.use(bodyParser.json());
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
@@ -20,18 +19,18 @@ let memory = [];
 
 app.get("/", (req, res) => {
   res.json({
-    status: "AI Agent Running",
+    status: "AI Agent Running"
   });
 });
 
 app.post("/chat", async (req, res) => {
 
-  try{
+  try {
 
     const msg = req.body.message;
 
     memory.push({
-      user: msg,
+      user: msg
     });
 
     const prompt = `
@@ -46,17 +45,19 @@ app.post("/chat", async (req, res) => {
 
     const result = await model.generateContent(prompt);
 
-    const response = result.response.text();
+    const response = await result.response;
+
+    const text = response.text();
 
     memory.push({
-      ai: response,
+      ai: text
     });
 
     res.json({
-      response: response,
+      response: text
     });
 
-  }catch(err){
+  } catch(err){
 
     res.json({
       error: err.message
