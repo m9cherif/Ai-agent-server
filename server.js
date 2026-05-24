@@ -1,8 +1,12 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const cors = require("cors");
+
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
+
+app.use(cors());
 
 app.use(bodyParser.json());
 
@@ -22,33 +26,44 @@ app.get("/", (req, res) => {
 
 app.post("/chat", async (req, res) => {
 
-  const msg = req.body.message;
+  try{
 
-  memory.push({
-    user: msg,
-  });
+    const msg = req.body.message;
 
-  const prompt = `
-  You are a smart AI Agent.
+    memory.push({
+      user: msg,
+    });
 
-  Memory:
-  ${JSON.stringify(memory)}
+    const prompt = `
+    You are a smart AI Agent.
 
-  User:
-  ${msg}
-  `;
+    Memory:
+    ${JSON.stringify(memory)}
 
-  const result = await model.generateContent(prompt);
+    User:
+    ${msg}
+    `;
 
-  const response = result.response.text();
+    const result = await model.generateContent(prompt);
 
-  memory.push({
-    ai: response,
-  });
+    const response = result.response.text();
 
-  res.json({
-    response: response,
-  });
+    memory.push({
+      ai: response,
+    });
+
+    res.json({
+      response: response,
+    });
+
+  }catch(err){
+
+    res.json({
+      error: err.message
+    });
+
+  }
+
 });
 
 app.listen(process.env.PORT || 3000, () => {
