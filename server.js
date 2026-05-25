@@ -18,43 +18,34 @@ app.post("/chat", async (req, res) => {
 
     const msg = req.body.message;
 
-    if(!msg){
-      return res.json({
-        error: "No message"
-      });
-    }
-
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
 
         headers: {
-
           "Authorization":
             "Bearer " + process.env.API_KEY,
 
           "Content-Type":
             "application/json"
-
         },
+
         body: JSON.stringify({
 
-  model:
-    "google/gemma-2-9b-it:free",
+          model:
+            "meta-llama/llama-3-8b-instruct:free",
 
-  max_tokens: 200,
+          max_tokens: 200,
 
-  messages: [
-    {
-      role: "user",
-      content: msg
-    }
-  ]
+          messages: [
+            {
+              role: "user",
+              content: msg
+            }
+          ]
 
-})
-
-
+        })
 
       }
     );
@@ -63,25 +54,8 @@ app.post("/chat", async (req, res) => {
 
     console.log(data);
 
-    if(data.error){
-      return res.json({
-        error: data.error.message
-      });
-    }
-
-    if(
-      !data.choices ||
-      !data.choices[0]
-    ){
-      return res.json({
-        error: "No AI response"
-      });
-    }
-
     const text =
-      data.choices[0]
-      .message
-      .content;
+      data.choices[0].message.content;
 
     res.json({
       response: text
