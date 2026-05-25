@@ -25,7 +25,7 @@ app.post("/chat", async (req, res) => {
     }
 
     const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
       {
         method: "POST",
         headers: {
@@ -33,18 +33,7 @@ app.post("/chat", async (req, res) => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-
-          model: "mistralai/mistral-7b-instruct-free",
-
-          max_tokens: 50,
-
-          messages: [
-            {
-              role: "user",
-              content: msg
-            }
-          ]
-
+          inputs: msg
         })
       }
     );
@@ -55,17 +44,17 @@ app.post("/chat", async (req, res) => {
 
     if(data.error){
       return res.json({
-        error: data.error.message
+        error: data.error
       });
     }
 
-    if(!data.choices){
+    if(!Array.isArray(data) || !data[0]){
       return res.json({
         error: "No AI response"
       });
     }
 
-    const text = data.choices[0].message.content;
+    const text = data[0].generated_text;
 
     res.json({
       response: text
