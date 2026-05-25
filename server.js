@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const https = require("https");
+const http = require("http");
 
 // Use node-fetch if native fetch is not available (Node < 18)
 let fetchFn;
@@ -29,6 +31,60 @@ app.get("/", (req, res) => {
   });
 });
 
+// Test connectivity endpoint
+app.get("/test-connection", async (req, res) => {
+  console.log("\n>>> Testing connectivity to Hugging Face API...");
+  
+  try {
+    const testUrl = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1";
+    console.log("Testing URL:", testUrl);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetchFn(testUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: {
+        "Authorization": "Bearer test"
+      }
+    }).catch(err => {
+      clearTimeout(timeoutId);
+      throw err;
+    });
+    
+    clearTimeout(timeoutId);
+    
+    console.log("✓ Connection test successful - status:", response.status);
+    return res.json({
+      status: "ok",
+      message: "Successfully connected to Hugging Face API",
+      httpStatus: response.status
+    });
+    
+  } catch (err) {
+    console.error("✗ Connection test failed");
+    console.error("Error:", err.message);
+    console.error("Error code:", err.code);
+    console.error("Error name:", err.name);
+    console.error("Full error:", err);
+    
+    return res.json({
+      status: "error",
+      message: "Cannot connect to Hugging Face API",
+      errorMessage: err.message,
+      errorCode: err.code,
+      errorName: err.name,
+      troubleshooting: {
+        checkInternetConnection: "Verify you have internet access",
+        checkFirewall: "Check if firewall/proxy is blocking api-inference.huggingface.co",
+        checkDNS: "Try pinging api-inference.huggingface.co",
+        checkAPIKey: "Verify API_KEY environment variable is set correctly"
+      }
+    });
+  }
+});
+
 app.post("/chat", async (req, res) => {
 
   try {
@@ -44,7 +100,8 @@ app.post("/chat", async (req, res) => {
     if (!process.env.API_KEY) {
       console.error("CRITICAL: API_KEY environment variable is not set!");
       return res.json({
-        error: "Server configuration error: API_KEY not set"
+        error: "Server configuration error: API_KEY not set",
+        hint: "Set the API_KEY environment variable with your Hugging Face API token"
       });
     }
 
@@ -60,49 +117,31 @@ app.post("/chat", async (req, res) => {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + process.env.API_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Node.js AI Agent"
       },
       body: JSON.stringify({
         inputs: msg
-      }),
-      timeout: 30000 // 30 second timeout
+      })
     };
 
-    console.log("Request headers (sanitized):", {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + (process.env.API_KEY ? "***" : "NOT SET")
-    });
-
-    let response;
-    try {
-      response = await fetchFn(apiUrl, fetchOptions);
-    } catch (fetchErr) {
-      console.error("Fetch network error:", fetchErr.message);
-      console.error("Error code:", fetchErr.code);
-      console.error("Error type:", fetchErr.constructor.name);
+    // Add timeout handling
+    if (fetchFn === fetch) {
+      // Native fetch supports AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      fetchOptions.signal = controller.signal;
       
-      // Detailed network diagnostics
-      if (fetchErr.code === "ENOTFOUND") {
-        return res.json({
-          error: "DNS resolution failed - cannot reach api-inference.huggingface.co",
-          details: "Check your internet connection or firewall settings"
-        });
-      } else if (fetchErr.code === "ECONNREFUSED") {
-        return res.json({
-          error: "Connection refused - server may be down",
-          details: fetchErr.message
-        });
-      } else if (fetchErr.code === "ETIMEDOUT") {
-        return res.json({
-          error: "Request timeout - server took too long to respond",
-          details: fetchErr.message
-        });
-      } else {
-        return res.json({
-          error: `Network error: ${fetchErr.message}`,
-          code: fetchErr.code
-        });
+      var response;
+      try {
+        response = await fetchFn(apiUrl, fetchOptions);
+      } finally {
+        clearTimeout(timeoutId);
       }
+    } else {
+      // node-fetch also supports timeout option
+      fetchOptions.timeout = 30000;
+      response = await fetchFn(apiUrl, fetchOptions);
     }
 
     console.log("Response status:", response.status, response.statusText);
@@ -118,7 +157,8 @@ app.post("/chat", async (req, res) => {
       }
       console.error("Error response:", errorData);
       return res.json({
-        error: `API Error ${response.status}: ${JSON.stringify(errorData)}`
+        error: `API Error ${response.status}`,
+        details: errorData
       });
     }
 
@@ -129,14 +169,16 @@ app.post("/chat", async (req, res) => {
     if(data.error){
       console.error("API returned error field:", data.error);
       return res.json({
-        error: data.error
+        error: "API Error",
+        details: data.error
       });
     }
 
     if(!Array.isArray(data) || !data[0]){
       console.error("Unexpected response format:", data);
       return res.json({
-        error: "No AI response - unexpected response format"
+        error: "No AI response - unexpected response format",
+        receivedData: data
       });
     }
 
@@ -151,15 +193,33 @@ app.post("/chat", async (req, res) => {
 
   } catch(err){
 
-    console.error("\n!!! CATCH BLOCK ERROR !!!");
-    console.error("Error message:", err.message);
-    console.error("Error type:", err.constructor.name);
-    console.error("Error stack:", err.stack);
+    console.error("\n!!! ERROR !!!");
+    console.error("Message:", err.message);
+    console.error("Name:", err.name);
+    console.error("Code:", err.code);
+    console.error("Stack:", err.stack);
 
-    res.json({
-      error: `Request failed: ${err.message}`,
-      errorType: err.constructor.name
-    });
+    // Provide detailed error info
+    let errorResponse = {
+      error: err.message,
+      errorName: err.name,
+      errorCode: err.code
+    };
+
+    // Specific error handling
+    if (err.name === "AbortError" || err.code === "ABORT_ERR") {
+      errorResponse.error = "Request timeout - took longer than 30 seconds";
+    } else if (err.code === "ENOTFOUND") {
+      errorResponse.error = "Cannot resolve api-inference.huggingface.co - DNS issue or no internet";
+    } else if (err.code === "ECONNREFUSED") {
+      errorResponse.error = "Connection refused - API server may be down";
+    } else if (err.code === "ETIMEDOUT") {
+      errorResponse.error = "Connection timeout";
+    } else if (err.code === "ECONNRESET") {
+      errorResponse.error = "Connection reset by server";
+    }
+
+    res.json(errorResponse);
 
   }
 
@@ -170,7 +230,8 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    apiKeySet: !!process.env.API_KEY
+    apiKeySet: !!process.env.API_KEY,
+    nodeVersion: process.version
   });
 });
 
@@ -178,5 +239,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✓ Server Running on http://localhost:${PORT}`);
   console.log(`✓ Health check: GET /health`);
+  console.log(`✓ Test connectivity: GET /test-connection`);
   console.log(`✓ Chat endpoint: POST /chat with {"message": "your message"}`);
 });
