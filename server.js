@@ -1,86 +1,110 @@
 const express = require("express");
 const cors = require("cors");
-const https = require("https");
-const http = require("http");
-
-// Use node-fetch if native fetch is not available (Node < 18)
-let fetchFn;
-try {
-  fetchFn = fetch; // Try native fetch first
-} catch (e) {
-  console.log("Native fetch not available, using node-fetch");
-  fetchFn = require("node-fetch");
-}
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-console.log("=== Server Starting ===");
+const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "mistral";
+
+console.log("=== AI Agent Server Starting ===");
 console.log("Node version:", process.version);
-console.log("Using fetch:", fetchFn === fetch ? "native" : "node-fetch");
-console.log("Environment API_KEY set:", !!process.env.API_KEY);
+console.log("Ollama URL:", OLLAMA_URL);
+console.log("Ollama Model:", OLLAMA_MODEL);
 console.log("Port:", process.env.PORT || 3000);
-console.log("====================\n");
+console.log("==================================\n");
 
 app.get("/", (req, res) => {
   res.json({
     status: "AI Agent Running",
-    nodeVersion: process.version
+    mode: "Ollama (No API Key Required)",
+    nodeVersion: process.version,
+    ollamaUrl: OLLAMA_URL,
+    ollamaModel: OLLAMA_MODEL
   });
 });
 
-// Test connectivity endpoint
+// Test Ollama connectivity
 app.get("/test-connection", async (req, res) => {
-  console.log("\n>>> Testing connectivity to Hugging Face API...");
+  console.log("\n>>> Testing connectivity to Ollama...");
   
   try {
-    const testUrl = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1";
+    const testUrl = `${OLLAMA_URL}/api/tags`;
     console.log("Testing URL:", testUrl);
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetchFn(testUrl, {
-      method: "HEAD",
-      signal: controller.signal,
-      headers: {
-        "Authorization": "Bearer test"
-      }
-    }).catch(err => {
-      clearTimeout(timeoutId);
-      throw err;
+    const response = await fetch(testUrl, {
+      method: "GET",
+      timeout: 10000
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log("✓ Ollama connection successful");
     
-    clearTimeout(timeoutId);
-    
-    console.log("✓ Connection test successful - status:", response.status);
     return res.json({
       status: "ok",
-      message: "Successfully connected to Hugging Face API",
-      httpStatus: response.status
+      message: "Successfully connected to Ollama",
+      httpStatus: response.status,
+      availableModels: data.models ? data.models.map(m => m.name) : []
     });
     
   } catch (err) {
-    console.error("✗ Connection test failed");
+    console.error("✗ Ollama connection failed");
     console.error("Error:", err.message);
-    console.error("Error code:", err.code);
-    console.error("Error name:", err.name);
-    console.error("Full error:", err);
     
     return res.json({
       status: "error",
-      message: "Cannot connect to Hugging Face API",
+      message: "Cannot connect to Ollama",
       errorMessage: err.message,
-      errorCode: err.code,
-      errorName: err.name,
       troubleshooting: {
-        checkInternetConnection: "Verify you have internet access",
-        checkFirewall: "Check if firewall/proxy is blocking api-inference.huggingface.co",
-        checkDNS: "Try pinging api-inference.huggingface.co",
-        checkAPIKey: "Verify API_KEY environment variable is set correctly"
+        step1: "Make sure Ollama is installed from https://ollama.ai",
+        step2: "Run 'ollama serve' in a terminal to start the Ollama server",
+        step3: "Run 'ollama pull mistral' to download a model (or use 'ollama pull neural-chat', 'ollama pull llama2', etc)",
+        step4: "Verify Ollama is running on localhost:11434 (or set OLLAMA_URL environment variable)"
       }
+    });
+  }
+});
+
+// Get available models
+app.get("/models", async (req, res) => {
+  console.log("\n>>> Fetching available models from Ollama...");
+  
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
+      method: "GET",
+      timeout: 10000
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const models = data.models ? data.models.map(m => ({
+      name: m.name,
+      size: m.size,
+      modifiedAt: m.modified_at
+    })) : [];
+
+    console.log("Available models:", models.map(m => m.name));
+    
+    res.json({
+      status: "ok",
+      models: models,
+      currentModel: OLLAMA_MODEL
+    });
+    
+  } catch (err) {
+    console.error("Error fetching models:", err.message);
+    res.json({
+      error: "Failed to fetch models",
+      message: err.message
     });
   }
 });
@@ -91,135 +115,98 @@ app.post("/chat", async (req, res) => {
 
     const msg = req.body.message;
 
-    if(!msg){
+    if (!msg) {
       return res.json({
         error: "No message provided"
       });
     }
 
-    if (!process.env.API_KEY) {
-      console.error("CRITICAL: API_KEY environment variable is not set!");
-      return res.json({
-        error: "Server configuration error: API_KEY not set",
-        hint: "Set the API_KEY environment variable with your Hugging Face API token"
-      });
-    }
-
     console.log("\n>>> New Chat Request");
-    console.log("Message:", msg.substring(0, 50) + (msg.length > 50 ? "..." : ""));
+    console.log("Message:", msg.substring(0, 100) + (msg.length > 100 ? "..." : ""));
+    console.log("Using model:", OLLAMA_MODEL);
 
-    const apiUrl = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1";
+    const ollamaUrl = `${OLLAMA_URL}/api/generate`;
     
-    console.log("Sending request to:", apiUrl);
-    console.log("Using fetch:", fetchFn === fetch ? "native" : "node-fetch");
+    console.log("Sending request to:", ollamaUrl);
 
-    const fetchOptions = {
+    const response = await fetch(ollamaUrl, {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + process.env.API_KEY,
-        "Content-Type": "application/json",
-        "User-Agent": "Node.js AI Agent"
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        inputs: msg
-      })
-    };
-
-    // Add timeout handling
-    if (fetchFn === fetch) {
-      // Native fetch supports AbortController
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-      fetchOptions.signal = controller.signal;
-      
-      var response;
-      try {
-        response = await fetchFn(apiUrl, fetchOptions);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    } else {
-      // node-fetch also supports timeout option
-      fetchOptions.timeout = 30000;
-      response = await fetchFn(apiUrl, fetchOptions);
-    }
+        model: OLLAMA_MODEL,
+        prompt: msg,
+        stream: false,
+        options: {
+          temperature: 0.7,
+          top_k: 40,
+          top_p: 0.9
+        }
+      }),
+      timeout: 120000 // 2 minute timeout for longer responses
+    });
 
     console.log("Response status:", response.status, response.statusText);
 
-    // Check if response is OK before parsing
     if (!response.ok) {
+      const errorText = await response.text();
       console.error("API returned error status:", response.status);
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = await response.text();
-      }
-      console.error("Error response:", errorData);
+      console.error("Error response:", errorText);
       return res.json({
-        error: `API Error ${response.status}`,
-        details: errorData
+        error: `Ollama Error ${response.status}`,
+        details: errorText
       });
     }
 
     const data = await response.json();
 
-    console.log("Response data received:", Array.isArray(data) ? `Array with ${data.length} items` : typeof data);
+    console.log("Response received");
 
-    if(data.error){
-      console.error("API returned error field:", data.error);
-      return res.json({
-        error: "API Error",
-        details: data.error
-      });
-    }
-
-    if(!Array.isArray(data) || !data[0]){
+    if (!data.response) {
       console.error("Unexpected response format:", data);
       return res.json({
-        error: "No AI response - unexpected response format",
+        error: "No response from model",
         receivedData: data
       });
     }
 
-    const text = data[0].generated_text;
+    const text = data.response.trim();
 
-    console.log("Generated text length:", text.length);
+    console.log("Generated response length:", text.length);
     console.log("✓ Request successful\n");
 
     res.json({
-      response: text
+      response: text,
+      model: data.model,
+      totalDuration: data.total_duration,
+      loadDuration: data.load_duration,
+      promptEvalDuration: data.prompt_eval_duration,
+      evalDuration: data.eval_duration
     });
 
-  } catch(err){
+  } catch (err) {
 
     console.error("\n!!! ERROR !!!");
     console.error("Message:", err.message);
     console.error("Name:", err.name);
     console.error("Code:", err.code);
-    console.error("Stack:", err.stack);
 
-    // Provide detailed error info
-    let errorResponse = {
-      error: err.message,
-      errorName: err.name,
-      errorCode: err.code
-    };
+    let errorMessage = err.message;
 
-    // Specific error handling
-    if (err.name === "AbortError" || err.code === "ABORT_ERR") {
-      errorResponse.error = "Request timeout - took longer than 30 seconds";
+    if (err.code === "ECONNREFUSED") {
+      errorMessage = `Cannot connect to Ollama at ${OLLAMA_URL}. Make sure Ollama is running (ollama serve)`;
     } else if (err.code === "ENOTFOUND") {
-      errorResponse.error = "Cannot resolve api-inference.huggingface.co - DNS issue or no internet";
-    } else if (err.code === "ECONNREFUSED") {
-      errorResponse.error = "Connection refused - API server may be down";
-    } else if (err.code === "ETIMEDOUT") {
-      errorResponse.error = "Connection timeout";
-    } else if (err.code === "ECONNRESET") {
-      errorResponse.error = "Connection reset by server";
+      errorMessage = `Cannot resolve Ollama host. Check OLLAMA_URL environment variable`;
+    } else if (err.name === "AbortError") {
+      errorMessage = "Request timeout - model took too long to respond";
     }
 
-    res.json(errorResponse);
+    res.json({
+      error: errorMessage,
+      errorName: err.name,
+      errorCode: err.code
+    });
 
   }
 
@@ -230,15 +217,18 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    apiKeySet: !!process.env.API_KEY,
-    nodeVersion: process.version
+    mode: "Ollama (No API Key)",
+    nodeVersion: process.version,
+    ollamaUrl: OLLAMA_URL
   });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✓ Server Running on http://localhost:${PORT}`);
+  console.log(`\n✓ Server Running on http://localhost:${PORT}`);
+  console.log(`✓ Home: GET /`);
   console.log(`✓ Health check: GET /health`);
-  console.log(`✓ Test connectivity: GET /test-connection`);
-  console.log(`✓ Chat endpoint: POST /chat with {"message": "your message"}`);
+  console.log(`✓ Test Ollama: GET /test-connection`);
+  console.log(`✓ List models: GET /models`);
+  console.log(`✓ Chat: POST /chat with {"message": "your message"}\n`);
 });
