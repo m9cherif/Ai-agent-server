@@ -18,25 +18,25 @@ app.post("/chat", async (req, res) => {
 
     const msg = req.body.message;
 
+    if(!msg){
+      return res.json({
+        error: "No message"
+      });
+    }
+
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
-
         headers: {
-          "Authorization":
-            "Bearer " + process.env.API_KEY,
-
-          "Content-Type":
-            "application/json"
+          "Authorization": "Bearer " + process.env.API_KEY,
+          "Content-Type": "application/json"
         },
-
         body: JSON.stringify({
 
-          model:
-            "openchat/openchat-7b:free",
+          model: "mistralai/mistral-7b-instruct",
 
-          max_tokens: 150,
+          max_tokens: 100,
 
           messages: [
             {
@@ -46,33 +46,26 @@ app.post("/chat", async (req, res) => {
           ]
 
         })
-
       }
     );
 
     const data = await response.json();
 
     console.log(data);
+
     if(data.error){
+      return res.json({
+        error: data.error.message
+      });
+    }
 
-  return res.json({
-    error: data.error.message
-  });
+    if(!data.choices){
+      return res.json({
+        error: "No AI response"
+      });
+    }
 
-}
-
-if(!data.choices){
-
-  return res.json({
-    error: "No AI response"
-  });
-
-}
-
-const text =
-  data.choices[0].message.content;
-
-    
+    const text = data.choices[0].message.content;
 
     res.json({
       response: text
