@@ -41,7 +41,7 @@ app.post("/chat", async (req, res) => {
         body: JSON.stringify({
 
   model:
-    "mistralai/mistral-7b-instruct",
+    "google/gemma-2-9b-it:free",
 
   max_tokens: 200,
 
