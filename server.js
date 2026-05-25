@@ -38,20 +38,23 @@ app.post("/chat", async (req, res) => {
             "application/json"
 
         },
-
         body: JSON.stringify({
 
-          model:
-            "openai/gpt-3.5-turbo",
+  model:
+    "mistralai/mistral-7b-instruct",
 
-          messages: [
-            {
-              role: "user",
-              content: msg
-            }
-          ]
+  max_tokens: 200,
 
-        })
+  messages: [
+    {
+      role: "user",
+      content: msg
+    }
+  ]
+
+})
+
+
 
       }
     );
