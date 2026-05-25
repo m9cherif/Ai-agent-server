@@ -34,9 +34,9 @@ app.post("/chat", async (req, res) => {
         body: JSON.stringify({
 
           model:
-            "meta-llama/llama-3-8b-instruct:free",
+            "openchat/openchat-7b:free",
 
-          max_tokens: 200,
+          max_tokens: 150,
 
           messages: [
             {
@@ -53,9 +53,26 @@ app.post("/chat", async (req, res) => {
     const data = await response.json();
 
     console.log(data);
+    if(data.error){
 
-    const text =
-      data.choices[0].message.content;
+  return res.json({
+    error: data.error.message
+  });
+
+}
+
+if(!data.choices){
+
+  return res.json({
+    error: "No AI response"
+  });
+
+}
+
+const text =
+  data.choices[0].message.content;
+
+    
 
     res.json({
       response: text
