@@ -36,7 +36,7 @@ app.post("/chat", async (req, res) => {
 
           model: "mistralai/mistral-7b-instruct",
 
-          max_tokens: 100,
+          max_tokens: 50,
 
           messages: [
             {
