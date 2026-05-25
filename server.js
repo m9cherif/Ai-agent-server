@@ -34,7 +34,7 @@ app.post("/chat", async (req, res) => {
         },
         body: JSON.stringify({
 
-          model: "mistralai/mistral-7b-instruct:free",
+          model: "mistralai/mistral-7b-instruct-free",
 
           max_tokens: 50,
 
