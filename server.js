@@ -20,9 +20,12 @@ app.post("/chat", async (req, res) => {
 
     if(!msg){
       return res.json({
-        error: "No message"
+        error: "No message provided"
       });
     }
+
+    console.log("Sending request to Hugging Face API...");
+    console.log("API Key present:", !!process.env.API_KEY);
 
     const response = await fetch(
       "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1",
@@ -38,9 +41,26 @@ app.post("/chat", async (req, res) => {
       }
     );
 
+    console.log("Response status:", response.status, response.statusText);
+
+    // Check if response is OK before parsing
+    if (!response.ok) {
+      console.error("API returned error status:", response.status);
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = await response.text();
+      }
+      console.error("Error response:", errorData);
+      return res.json({
+        error: `API Error ${response.status}: ${JSON.stringify(errorData)}`
+      });
+    }
+
     const data = await response.json();
 
-    console.log(data);
+    console.log("Response data:", data);
 
     if(data.error){
       return res.json({
@@ -50,7 +70,7 @@ app.post("/chat", async (req, res) => {
 
     if(!Array.isArray(data) || !data[0]){
       return res.json({
-        error: "No AI response"
+        error: "No AI response - unexpected response format"
       });
     }
 
@@ -62,10 +82,11 @@ app.post("/chat", async (req, res) => {
 
   } catch(err){
 
-    console.log(err);
+    console.error("Catch block error:", err.message);
+    console.error("Error stack:", err.stack);
 
     res.json({
-      error: err.message
+      error: `Request failed: ${err.message}`
     });
 
   }
@@ -73,5 +94,5 @@ app.post("/chat", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("Server Running");
+  console.log(`Server Running on port ${process.env.PORT || 3000}`);
 });
